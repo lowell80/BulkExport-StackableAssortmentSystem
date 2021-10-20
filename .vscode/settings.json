@@ -1,0 +1,10 @@
+{
+	"python.autoComplete.extraPaths": [
+		"~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/Python/defs/",
+		"~/Library/Applicatio Support/Autodesk/webdeploy/production/Autodesk Fusion 360.app/Contents/Api/Python/packages/adsk/defs/"
+	],
+	"python.analysis.extraPaths": [
+		"~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/Python/defs/",
+		"~/Library/Applicatio Support/Autodesk/webdeploy/production/Autodesk Fusion 360.app/Contents/Api/Python/packages/adsk/defs/"
+	]
+}
