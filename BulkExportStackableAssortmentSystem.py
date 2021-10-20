@@ -2,6 +2,7 @@
 #Description-
 
 import traceback
+from contextlib import contextmanager
 from itertools import combinations_with_replacement
 from pathlib import Path
 
@@ -15,6 +16,15 @@ highest_size = 4
 highest_unit = 2
 
 
+@contextmanager
+def get_reverting_param(design, name : str):
+    param = design.allParameters.itemByName(name)
+    expression = param.expression
+    try:
+        yield param
+    finally:
+        # Reset to the original value
+        param.expression = expression
 
 
 
@@ -54,34 +64,39 @@ def run(context):
         folder = base_export / "Stackable-Assortment-System"
         folder.mkdir(exist_ok=True)
 
-        # Changing params
-        segments_x_param = get_param('BoxSegmentsX')
-        segments_y_param = get_param('BoxSegmentsY')
-        segments_u_param = get_param('BoxHeightUnits')
+        # Static params (used in output file name)  (database unit is cm, we want mm)
+        segment_size_x = int(get_param("SegmentSizeX").value * 10)
+        segment_size_y = int(get_param("SegmentSizeY").value * 10)
+        box_height_base = int(get_param("BoxHeightBase").value * 10)
+        lid_height_base = int(get_param("LidHeightBase").value * 10)
 
+        if segment_size_x == segment_size_y:
+            segment_size = segment_size_x
+        else:
+            segment_size = f"{segment_size_x}x{segment_size_y}"
 
-        # Params for base filename:
-        segment_size_x = param_value("SegmentSizeX")
-        box_height_base = param_value("BoxHeightBase")
-        lid_height_base = param_value("LidHeightBase")
+        # Capture varying params (use context manager to retore original values)
+        with get_reverting_param(design, "BoxSegmentsX") as segments_x_param, \
+             get_reverting_param(design, "BoxSegmentsY") as segments_y_param, \
+             get_reverting_param(design, "BoxHeightUnits") as segments_u_param:
 
-        for x, y in combinations_with_replacement(range(1, highest_size+1), 2):
-            segments_x_param.expression = str(x)
-            segments_y_param.expression = str(y)
+            for x, y in combinations_with_replacement(range(1, highest_size+1), 2):
+                segments_x_param.expression = str(x)
+                segments_y_param.expression = str(y)
 
-            export_component(design, lid_component,
-                                folder / f"lid-{x}x{y}-lid-{lid_height_base}_grid-{segment_size_x}.stl")
+                export_component(design, lid_component,
+                                    folder / f"lid-{x}x{y}-lid-{lid_height_base}_grid-{segment_size}.stl")
 
-            for u in range(1, highest_unit + 1):
-                segments_u_param.expression = str(u)
+                for u in range(1, highest_unit + 1):
+                    segments_u_param.expression = str(u)
 
-                # Let the view have a chance to paint just so you can watch the progress.
-                adsk.doEvents()
+                    # Let the view have a chance to paint just so you can watch the progress.
+                    adsk.doEvents()
 
-                export_component(design, box_component,
-                                folder / f"box-{x}x{y}-{u}u_base-{box_height_base}_grid-{segment_size_x}.stl")
-        # Restore param values back to their original values
+                    export_component(design, box_component,
+                                    folder / f"box-{x}x{y}-{u}u_base-{box_height_base}_grid-{segment_size}.stl")
 
+        adsk.doEvents()
         ui.messageBox('Finished.')
     except:
         if ui:
