@@ -14,10 +14,13 @@ base_export = Path("~/Dropbox/3D Prints/F360_Exports").expanduser()
 
 highest_size = 4
 highest_unit = 2
+highest_grid = 6
 
 
 @contextmanager
 def get_reverting_param(design, name : str):
+    """ This context manager restores the original values of a paramater once we
+    are done varying it. """
     param = design.allParameters.itemByName(name)
     expression = param.expression
     try:
@@ -59,6 +62,7 @@ def run(context):
 
         box_component = next(c for c in design.allComponents if c.name == "Box")
         lid_component = next(c for c in design.allComponents if c.name == "Lid")
+        grid_component = next(c for c in design.allComponents if c.name == "Grid")
 
         # Specify the folder to write out the results.
         folder = base_export / "Stackable-Assortment-System"
@@ -72,10 +76,11 @@ def run(context):
 
         if segment_size_x == segment_size_y:
             segment_size = segment_size_x
+            is_square = True
         else:
             segment_size = f"{segment_size_x}x{segment_size_y}"
+            is_square = False
 
-        # Capture varying params (use context manager to retore original values)
         with get_reverting_param(design, "BoxSegmentsX") as segments_x_param, \
              get_reverting_param(design, "BoxSegmentsY") as segments_y_param, \
              get_reverting_param(design, "BoxHeightUnits") as segments_u_param:
@@ -85,7 +90,7 @@ def run(context):
                 segments_y_param.expression = str(y)
 
                 export_component(design, lid_component,
-                                    folder / f"lid-{x}x{y}-lid-{lid_height_base}_grid-{segment_size}.stl")
+                                 folder / f"lid-{x}x{y}-lid-{lid_height_base}_grid-{segment_size}.stl")
 
                 for u in range(1, highest_unit + 1):
                     segments_u_param.expression = str(u)
@@ -95,6 +100,23 @@ def run(context):
 
                     export_component(design, box_component,
                                     folder / f"box-{x}x{y}-{u}u_base-{box_height_base}_grid-{segment_size}.stl")
+
+        # Make range of grid sizes
+
+        with get_reverting_param(design, "GridSegmentsX") as grid_x_param, \
+             get_reverting_param(design, "GridSegmentsY") as grid_y_param:
+
+            # We are basically assuming that the grid is square here.
+            # This (Otherwise 2x3 and 3x2 are NOT the same thing)
+            assert is_square, "We didn't code for non-square grid generation yet"
+            for x, y in combinations_with_replacement(range(1, highest_grid+1), 2):
+                grid_x_param.expression = str(x)
+                grid_y_param.expression = str(y)
+
+                adsk.doEvents()
+                export_component(design, grid_component,
+                                 folder / f"grid-{x}x{y}_base-{box_height_base}_grid-{segment_size}.stl")
+
 
         adsk.doEvents()
         ui.messageBox('Finished.')
