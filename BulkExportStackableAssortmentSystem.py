@@ -1,8 +1,11 @@
-#Author-Lowell
-#Description-
+# Author-Lowell
+# Description-
 
+import json
+import sys
 import traceback
 from contextlib import contextmanager
+from datetime import datetime
 from itertools import combinations_with_replacement
 from pathlib import Path
 
@@ -18,7 +21,7 @@ highest_grid = 6
 
 
 @contextmanager
-def get_reverting_param(design, name : str):
+def get_reverting_param(design, name: str):
     """ This context manager restores the original values of a paramater once we
     are done varying it. """
     param = design.allParameters.itemByName(name)
@@ -30,7 +33,37 @@ def get_reverting_param(design, name : str):
         param.expression = expression
 
 
+def dump_params(output, design):
+    """ Create a JSON file with all the paramters listing (including the ones tweaked during execution) """
+    parts1 = []
+    parts2 = []
 
+    for param in design.allParameters:
+        item = {
+            "name": param.name,
+            "expression": param.expression,
+            "value": param.value
+        }
+        if param.isFavorite:
+            parts1.append(item)
+        else:
+            parts2.append(item)
+
+    doc = {
+        "time": str(datetime.now()),
+        "design": {
+            "name": design.parentDocument.name,
+            "params": parts1 + parts2,
+        },
+        "script": sys.argv[0],
+        "args": {
+            "highest_size": highest_size,
+            "highest_unit": highest_unit,
+            "highest_grid": highest_grid,
+        },
+    }
+    with open(output, "w") as f:
+        json.dump(doc, f, indent=2)
 
 
 def export_component(design, component, filename):
@@ -41,6 +74,7 @@ def export_component(design, component, filename):
     stlOptions.filename = str(filename)
     exportMgr.execute(stlOptions)
 
+
 def run(context):
     ui = None
     try:
@@ -49,20 +83,23 @@ def run(context):
         design = adsk.fusion.Design.cast(app.activeProduct)
 
         # Avoid some verbosity..
-        def get_param(name : str):
+        def get_param(name: str):
             return design.allParameters.itemByName(name)
 
-        def param_value(name : str):
-            # Drop units (mm)
+        def param_value(name: str):
+            # Drop space between value and units (mm)
             v = get_param(name).expression
-            return v.split(" ")[0]
+            return v.replace(" ", "")
 
         # Get the root component of the active design
         # rootComp = design.rootComponent
 
-        box_component = next(c for c in design.allComponents if c.name == "Box")
-        lid_component = next(c for c in design.allComponents if c.name == "Lid")
-        grid_component = next(c for c in design.allComponents if c.name == "Grid")
+        box_component = next(
+            c for c in design.allComponents if c.name == "Box")
+        lid_component = next(
+            c for c in design.allComponents if c.name == "Lid")
+        grid_component = next(
+            c for c in design.allComponents if c.name == "Grid")
 
         # Specify the folder to write out the results.
         folder = base_export / "Stackable-Assortment-System"
@@ -81,9 +118,16 @@ def run(context):
             segment_size = f"{segment_size_x}x{segment_size_y}"
             is_square = False
 
+        # Make a separate folder based on primary size dimensions
+        folder = folder / \
+            f"base-{param_value('BoxHeightBase')}_grid-{param_value('SegmentSizeX')}"
+        folder.mkdir(exist_ok=True)
+
+        dump_params(folder / "fusion360_bulk_export.json", design)
+
         with get_reverting_param(design, "BoxSegmentsX") as segments_x_param, \
-             get_reverting_param(design, "BoxSegmentsY") as segments_y_param, \
-             get_reverting_param(design, "BoxHeightUnits") as segments_u_param:
+                get_reverting_param(design, "BoxSegmentsY") as segments_y_param, \
+                get_reverting_param(design, "BoxHeightUnits") as segments_u_param:
 
             for x, y in combinations_with_replacement(range(1, highest_size+1), 2):
                 segments_x_param.expression = str(x)
@@ -99,12 +143,12 @@ def run(context):
                     adsk.doEvents()
 
                     export_component(design, box_component,
-                                    folder / f"box-{x}x{y}-{u}u_base-{box_height_base}_grid-{segment_size}.stl")
+                                     folder / f"box-{x}x{y}-{u}u_base-{box_height_base}_grid-{segment_size}.stl")
 
         # Make range of grid sizes
 
         with get_reverting_param(design, "GridSegmentsX") as grid_x_param, \
-             get_reverting_param(design, "GridSegmentsY") as grid_y_param:
+                get_reverting_param(design, "GridSegmentsY") as grid_y_param:
 
             # We are basically assuming that the grid is square here.
             # This (Otherwise 2x3 and 3x2 are NOT the same thing)
@@ -116,7 +160,6 @@ def run(context):
                 adsk.doEvents()
                 export_component(design, grid_component,
                                  folder / f"grid-{x}x{y}_base-{box_height_base}_grid-{segment_size}.stl")
-
 
         adsk.doEvents()
         ui.messageBox('Finished.')
